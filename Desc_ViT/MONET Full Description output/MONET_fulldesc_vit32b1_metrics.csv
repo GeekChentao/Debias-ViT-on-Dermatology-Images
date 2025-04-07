@@ -1,0 +1,5 @@
+Hyper Parameters,Skin1 Accuracy,Skin1 Sensitivity,Skin1 Specificity,Skin1 Precision,Skin1 Score,Skin1 AUC,Skin2 Accuracy,Skin2 Sensitivity,Skin2 Specificity,Skin2 Precision,Skin2 Score,Skin2 AUC
+vit = 32B  tokenizer = sentence-transformers/all-MiniLM-L6-v2  integrate_way = concatenate  optimizer = SGD_Momentum  batch_size = 16  ,0.802,0.809,0.7953,0.7925,0.8007,0.8022,0.8065,0.8485,0.7586,0.8,0.8235,0.8036
+vit = 32B  tokenizer = sentence-transformers/all-MiniLM-L6-v2  integrate_way = fusion  optimizer = SGD_Momentum  batch_size = 16  ,0.7765,0.7083,0.8423,0.8127,0.757,0.7753,0.8387,0.7879,0.8966,0.8966,0.8387,0.8422
+vit = 32B  tokenizer = bert-base-uncased  integrate_way = fusion  optimizer = SGD_Momentum  batch_size = 8  ,0.7986,0.8611,0.7383,0.7607,0.8078,0.7997,0.7903,0.7879,0.7931,0.8125,0.8,0.7905
+vit = 32B  tokenizer = CLIP  integrate_way = fusion  optimizer = SGD_Momentum  batch_size = 16  ,0.8413,0.7917,0.8893,0.8736,0.8306,0.8405,0.7581,0.6667,0.8621,0.8462,0.7458,0.7644
