@@ -1,5 +1,3 @@
-#! /usr/bin/env python3.12
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -13,7 +11,6 @@ import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from transformers import AutoTokenizer, AutoModel
 import time
-import random
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -66,58 +63,6 @@ class SkinDataset(Dataset):
         return image, skin, lesion, description
 
 
-class SkinDatasetAugmented(Dataset):
-    def __init__(self, df, transform=None, test_time_aug=True, num_aug=5, aug_id=0):
-        self.df = df
-        self.transform = transform
-        self.test_time_aug = test_time_aug
-        self.num_aug = num_aug
-        self.aug_id = aug_id
-
-        # Test-time augmentation transforms
-        self.tt_transforms = [
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=10),
-            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
-        ]
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        img_filename = self.df.iloc[idx]["image_path"] + ".jpg"
-        skin = self.df.iloc[idx]["skin_color"]
-        lesion = self.df.iloc[idx]["lesion"]
-        img_path = os.path.join("..", dir_path, img_filename)
-        image = Image.open(img_path).convert("RGB")
-
-        description = skin_tones[0 if int(skin) <= 4 else 1]
-
-        if self.test_time_aug:
-            aug_image = image.copy()
-            random.seed(3 + idx)
-            for i, transform in enumerate(
-                # random.sample(self.tt_transforms, random.randint(1, 2))
-                random.sample(self.tt_transforms, 2)
-            ):
-                # print(f"i = {i}")
-                torch.manual_seed(3 + idx + i)
-                aug_image = transform(aug_image)
-            if self.transform:
-                aug_image = self.transform(aug_image)
-                # Add random erasing after converting to tensor
-                aug_image = transforms.RandomErasing(p=0.2, scale=(0.01, 0.05))(
-                    aug_image
-                )
-                # Add noise after converting to tensor
-                aug_image = aug_image + torch.randn_like(aug_image) * 0.01
-            return aug_image, int(skin), int(lesion), description
-        else:
-            if self.transform:
-                image = self.transform(image)
-            return image, int(skin), int(lesion), description
-
-
 def calculate_mean_std(loader):
     print("Calculatating mean and std for trainning images")
     mean = torch.zeros(3)
@@ -158,9 +103,7 @@ train_dataset = SkinDataset(train_data, transform)
 train_loader = DataLoader(
     train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
 )
-validation_dataset = SkinDatasetAugmented(
-    validation_data, transform, test_time_aug=True
-)
+validation_dataset = SkinDataset(validation_data, transform)
 validation_loader = DataLoader(
     validation_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
 )
