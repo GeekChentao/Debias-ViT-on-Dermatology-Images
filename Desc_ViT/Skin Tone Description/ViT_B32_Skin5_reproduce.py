@@ -68,17 +68,16 @@ class ImageDataset(Dataset):
 
 
 class SkinDataset(Dataset):
-    def __init__(self, df, transform=None, test_time_aug=True, num_aug=5, aug_id=0):
+    def __init__(self, df, transform=None, test_time_aug=True, seed=1):
         self.df = df
         self.transform = transform
         self.test_time_aug = test_time_aug
-        self.num_aug = num_aug
-        self.aug_id = aug_id
+        self.seed = seed
 
         # Test-time augmentation transforms
         self.tt_transforms = [
             transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=10),
+            # transforms.RandomRotation(degrees=10),
             transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
         ]
 
@@ -96,14 +95,12 @@ class SkinDataset(Dataset):
 
         if self.test_time_aug:
             aug_image = image.copy()
-            random.seed(3 + idx)
-            for i, transform in enumerate(
-                # random.sample(self.tt_transforms, random.randint(1, 2))
-                random.sample(self.tt_transforms, 2)
-            ):
-                # print(f"i = {i}")
-                torch.manual_seed(3 + idx + i)
-                aug_image = transform(aug_image)
+            if self.seed is not None:
+                random.seed(self.seed + idx)
+                torch.manual_seed(self.seed + idx)
+            for t in self.tt_transforms:
+                aug_image = t(aug_image)
+
             if self.transform:
                 aug_image = self.transform(aug_image)
                 # Add random erasing after converting to tensor
@@ -155,7 +152,7 @@ transform = transforms.Compose(
 batch_size = 32
 num_workers = 4
 
-
+# Setting test time augmentation to False to see the results on original test images
 test_dataset = SkinDataset(test_data, transform, test_time_aug=True)
 test_loader = DataLoader(
     test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
