@@ -148,7 +148,6 @@ class VitTransformerClassifier(nn.Module):
 
         img_features = self.vit_model(image)
         combined_features = torch.cat((img_features, text_features), dim=1)
-
         output = self.fc(combined_features)
         return output
 
@@ -203,3 +202,27 @@ for key, item in skin_metrics6.items():
     print(
         f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
     )
+
+with open(output_file, "w") as file:
+    file.write("Test output:\n")
+    # file.write(f"\nvalidation loss = {val_losses}")
+    file.write(f"\nvit = 32B")
+    file.write(f"\ntokenizer = {text_model}")
+    file.write(f"\nintegrate_way = concatenate")
+    file.write(f"\noptimizer = SGD_Momentum")
+    file.write(f"\nlearning_rate = {0.001}")
+    file.write(f"\nweight_decay = {1e-4}")
+    file.write(f"\nscheduler = CosineAnnealingLR")
+    file.write(f"\nbatch_size = {batch_size}")
+    # file.write(f"\nepochs = {epoch}")
+    file.write(f"\nmax_stop_count = {5}")
+    file.write(f"\ngrad_norm_clip = {1.0}")
+    for skin, metrics in skin_metrics6.items():
+        file.write(
+            f"\nskin tone {skin} true label:{metrics['true']}\nskin tone {skin} predicted label:{metrics['predict']}",
+        )
+
+    for skin, metrics in skin_metrics2.items():
+        file.write(
+            f"\nbinary skin tone {skin} true label:{metrics['true']}\nbinary skin tone {skin} predicted label:{metrics['predict']}",
+        )

@@ -198,7 +198,7 @@ if not scheduler:
 
 grad_norm_clip = 1
 checkpoint_path = f"MONET_MostPresent_desc_vit32b1_skin_{optimizer_type}_{lr}_{scheduler_type}_best.pth"
-output_filename = (
+output_file = (
     f"MONET_MostPresent_desc_vit32b1_skin_{optimizer_type}_{lr}_{scheduler_type}.txt"
 )
 
@@ -297,7 +297,7 @@ for key, item in skin_metrics6.items():
         f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
     )
 
-with open(output_filename, "w") as file:
+with open(output_file, "w") as file:
     file.write("Test output:\n")
     file.write(f"\nvalidation loss = {val_losses}")
     file.write(f"\nvit = 32B")

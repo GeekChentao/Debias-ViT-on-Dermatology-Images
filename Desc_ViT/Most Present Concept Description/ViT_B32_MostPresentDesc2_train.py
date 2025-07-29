@@ -97,8 +97,8 @@ transform = transforms.Compose(
     ]
 )
 
-batch_size = 16
-num_workers = 2
+batch_size = 8
+num_workers = 1
 
 train_dataset = SkinDataset(train_data, transform)
 train_loader = DataLoader(
@@ -115,7 +115,8 @@ test_loader = DataLoader(
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-text_model = "sentence-transformers/all-MiniLM-L6-v2"
+# text_model = "sentence-transformers/all-MiniLM-L6-v2"
+text_model = "bert-base-uncased"
 
 
 # Vit with Transformer Model Constructure
@@ -125,35 +126,18 @@ class VitTransformerClassifier(nn.Module):
 
         self.text_model = AutoModel.from_pretrained(text_model).to(device)
         self.tokenizer = AutoTokenizer.from_pretrained(text_model)
-        self.text_feature_dim = 384
+        self.text_feature_dim = 768
 
         self.vit_model = vit_b_32(weights=ViT_B_32_Weights.DEFAULT).to(device)
         self.vit_feature_dim = self.vit_model.heads.head.in_features
         self.vit_model.heads.head = nn.Identity()
 
-        hidden_dim = 512
-
-        self.img_proj = nn.Sequential(
-            nn.Linear(self.vit_feature_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-        )
-
-        self.txt_proj = nn.Sequential(
-            nn.Linear(self.text_feature_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-        )
-
-        self.fusion = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+        self.fc = nn.Sequential(
+            nn.Linear(self.vit_feature_dim + self.text_feature_dim, 512),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Linear(512, 2),
         )
-
-        self.classifier = nn.Linear(hidden_dim, 2)
 
     def forward(self, image, text):
         text_tokenized = self.tokenizer(
@@ -163,15 +147,10 @@ class VitTransformerClassifier(nn.Module):
         text_features = self.text_model(**text_tokenized).last_hidden_state[
             :, 0, :
         ]  # CLS token embedding
-        text_features = self.txt_proj(text_features)
 
         img_features = self.vit_model(image)
-        img_features = self.img_proj(img_features)
-        combined_features = img_features + text_features
-        fused = self.fusion(combined_features)
-        # combined_features = torch.cat((img_features, text_features), dim=1)
-
-        output = self.classifier(fused)
+        combined_features = torch.concat((img_features, text_features), dim=1)
+        output = self.fc(combined_features)
         return output
 
 
@@ -219,7 +198,7 @@ if not scheduler:
 
 grad_norm_clip = 1
 checkpoint_path = f"MONET_MostPresent_desc_vit32b2_skin_{optimizer_type}_{lr}_{scheduler_type}_best.pth"
-output_filename = (
+output_file = (
     f"MONET_MostPresent_desc_vit32b2_skin_{optimizer_type}_{lr}_{scheduler_type}.txt"
 )
 
@@ -301,7 +280,6 @@ with torch.no_grad():
             skin_metrics2[1 if skin <= 4 else 2]["correct"] += output == label
             skin_metrics2[1 if skin <= 4 else 2]["predict"].append(output)
             skin_metrics2[1 if skin <= 4 else 2]["true"].append(label)
-
 for key, item in skin_metrics2.items():
     item["accuracy"] = item["correct"] / item["total"]
 for key, item in skin_metrics6.items():
@@ -320,12 +298,12 @@ for key, item in skin_metrics6.items():
     )
 
 
-with open(output_filename, "w") as file:
+with open(output_file, "w") as file:
     file.write("Test output:\n")
     file.write(f"\nvalidation loss = {val_losses}")
     file.write(f"\nvit = 32B")
     file.write(f"\ntokenizer = {text_model}")
-    file.write(f"\nintegrate_way = fusion")
+    file.write(f"\nintegrate_way = concatenate")
     file.write(f"\noptimizer = {optimizer_type}")
     file.write(f"\nlearning_rate = {lr}")
     file.write(f"\nweight_decay = {weight_dacay}")

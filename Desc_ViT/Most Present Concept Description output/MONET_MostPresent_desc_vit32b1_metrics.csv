@@ -1,5 +1,7 @@
 Hyper Parameters,Skin1 Accuracy,Skin1 Sensitivity,Skin1 Specificity,Skin1 Precision,Skin1 Score,Skin1 AUC,Skin2 Accuracy,Skin2 Sensitivity,Skin2 Specificity,Skin2 Precision,Skin2 Score,Skin2 AUC
-vit = 32B  tokenizer = sentence-transformers/all-MiniLM-L6-v2  integrate_way = concatenate  optimizer = SGD_Momentum  batch_size = 16  ,0.8072,0.7535,0.8591,0.8378,0.7934,0.8063,0.7581,0.7576,0.7586,0.7812,0.7692,0.7581
+vit = 32B  tokenizer = sentence-transformers/all-MiniLM-L6-v2  integrate_way = concatenate  optimizer = SGD_Momentum  batch_size = 16  ,0.8055,0.7535,0.8557,0.8346,0.792,0.8046,0.7581,0.7576,0.7586,0.7812,0.7692,0.7581
+vit = 32B  tokenizer = bert-base-uncased  integrate_way = concatenate  optimizer = SGD_Momentum  batch_size = 8  ,0.8089,0.7986,0.8188,0.8099,0.8042,0.8087,0.8065,0.7879,0.8276,0.8387,0.8125,0.8077
+vit = 32B  tokenizer = CLIP  integrate_way = concatenate  optimizer = SGD_Momentum  batch_size = 16  ,0.8157,0.7083,0.9195,0.8947,0.7907,0.8139,0.8065,0.697,0.931,0.92,0.7931,0.814
 vit = 32B  tokenizer = sentence-transformers/all-MiniLM-L6-v2  integrate_way = fusion  optimizer = SGD_Momentum  batch_size = 16  ,0.7918,0.7535,0.8289,0.8097,0.7806,0.7912,0.7903,0.7576,0.8276,0.8333,0.7937,0.7926
 vit = 32B  tokenizer = bert-base-uncased  integrate_way = fusion  optimizer = SGD_Momentum  batch_size = 8  ,0.8072,0.75,0.8624,0.8405,0.7927,0.8062,0.7742,0.7273,0.8276,0.8276,0.7742,0.7774
-vit = 32B  tokenizer = CLIP  integrate_way = fusion  optimizer = SGD_Momentum  batch_size = 16  ,0.8447,0.7674,0.9195,0.902,0.8293,0.8434,0.8065,0.7273,0.8966,0.8889,0.8,0.8119
+vit = 32B  tokenizer = CLIP  integrate_way = fusion  optimizer = SGD_Momentum  batch_size = 16  ,0.8413,0.7639,0.9161,0.898,0.8255,0.84,0.8065,0.7273,0.8966,0.8889,0.8,0.8119

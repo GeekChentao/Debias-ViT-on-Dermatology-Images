@@ -17,7 +17,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 train_data = pd.read_csv(os.path.join("..", "train_data.csv"))
 validation_data = pd.read_csv(os.path.join("..", "validation_data.csv"))
 test_data = pd.read_csv(os.path.join("..", "test_data.csv"))
-dir_path = "./Fitzpatric_subset/"
+dir_path = "../Fitzpatric_subset/"
 
 skin_tones = ["Light skin. ", "Dark skin. "]
 
@@ -192,7 +192,7 @@ optimizer_type = "SGD_Momentum"
 # scheduler_type = "StepLR"
 
 # Add Cosine Annealing LR Scheduler
-scheduler = scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs)
+scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs)
 scheduler_type = "CosineAnnealingLR"
 
 # scheduler = None
@@ -203,7 +203,7 @@ grad_norm_clip = 1
 checkpoint_path = (
     f"GeminiDesc_vit32b1_skin_{optimizer_type}_{lr}_{scheduler_type}_best.pth"
 )
-output_filename = f"GeminiDesc_vit32b1_skin_{optimizer_type}_{lr}_{scheduler_type}.txt"
+output_file = f"GeminiDesc_vit32b1_skin_{optimizer_type}_{lr}_{scheduler_type}.txt"
 
 
 for epoch in range(num_epochs):
@@ -300,7 +300,7 @@ for key, item in skin_metrics6.items():
         f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
     )
 
-with open(output_filename, "w") as file:
+with open(output_file, "w") as file:
     file.write("Test output:\n")
     file.write(f"\nvalidation loss = {val_losses}")
     file.write(f"\nvit = 32B")

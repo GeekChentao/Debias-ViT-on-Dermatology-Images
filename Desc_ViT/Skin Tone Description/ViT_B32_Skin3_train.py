@@ -11,8 +11,12 @@ import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from transformers import AutoTokenizer, AutoModel
 import os
+import clip
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model_clip, preprocess = clip.load("ViT-B/32", device)
 
 train_data = pd.read_csv(os.path.join("..", "train_data.csv"))
 validation_data = pd.read_csv(os.path.join("..", "validation_data.csv"))
@@ -60,6 +64,7 @@ class SkinDataset(Dataset):
         description = skin_tones[0 if int(skin) <= 4 else 1]
         if self.transform:
             image = self.transform(image)
+        # print(description)
         return image, skin, lesion, description
 
 
@@ -114,68 +119,36 @@ test_loader = DataLoader(
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# text_model = "sentence-transformers/all-MiniLM-L6-v2"
-text_model = "bert-base-uncased"
 
-
-# Vit with Transformer Model Constructure
-class VitTransformerClassifier(nn.Module):
+class ClipClassifier(nn.Module):
     def __init__(self):
-        super(VitTransformerClassifier, self).__init__()
+        super(ClipClassifier, self).__init__()
+        self.hidden_dim = 512
 
-        self.text_model = AutoModel.from_pretrained(text_model).to(device)
-        self.tokenizer = AutoTokenizer.from_pretrained(text_model)
-        self.text_feature_dim = 768
-
-        self.vit_model = vit_b_32(weights=ViT_B_32_Weights.DEFAULT).to(device)
-        self.vit_feature_dim = self.vit_model.heads.head.in_features
-        self.vit_model.heads.head = nn.Identity()
-
-        hidden_dim = 512
-
-        self.img_proj = nn.Sequential(
-            nn.Linear(self.vit_feature_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-        )
-
-        self.txt_proj = nn.Sequential(
-            nn.Linear(self.text_feature_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-        )
-
-        self.fusion = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+        self.fc = nn.Sequential(
+            nn.Linear(self.hidden_dim + self.hidden_dim, 512),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Linear(512, 2),
         )
-
-        self.classifier = nn.Linear(hidden_dim, 2)
 
     def forward(self, image, text):
-        text_tokenized = self.tokenizer(
-            text, padding=True, truncation=True, return_tensors="pt"
-        )
-        text_tokenized = {k: v.to(device) for k, v in text_tokenized.items()}
-        text_features = self.text_model(**text_tokenized).last_hidden_state[
-            :, 0, :
-        ]  # CLS token embedding
-        text_features = self.txt_proj(text_features)
+        # Ensure text is a list of strings
+        if isinstance(text, tuple):
+            text = list(text)  # Convert tuple to list
+        elif isinstance(text, str):
+            text = [text]  # Convert single string to list
+        with torch.no_grad():
+            img_features = model_clip.encode_image(image.to(device)).float()
+            text_tokens = clip.tokenize(text).to(device)
+            text_features = model_clip.encode_text(text_tokens).float()
 
-        img_features = self.vit_model(image)
-        img_features = self.img_proj(img_features)
-        combined_features = img_features + text_features
-        fused = self.fusion(combined_features)
-        # combined_features = torch.cat((img_features, text_features), dim=1)
-
-        output = self.classifier(fused)
+        combined_features = torch.cat((img_features, text_features), dim=1)
+        output = self.fc(combined_features)
         return output
 
 
-model = VitTransformerClassifier().to(device)
+model = ClipClassifier().to(device)
 criterion = nn.CrossEntropyLoss()
 
 patience = 5
@@ -324,8 +297,8 @@ with open(output_filename, "w") as file:
     file.write("Test output:\n")
     file.write(f"\nvalidation loss = {val_losses}")
     file.write(f"\nvit = 32B")
-    file.write(f"\ntokenizer = {text_model}")
-    file.write(f"\nintegrate_way = fusion")
+    file.write(f"\ntokenizer = CLIP")
+    file.write(f"\nintegrate_way = concatenation")
     file.write(f"\noptimizer = {optimizer_type}")
     file.write(f"\nlearning_rate = {lr}")
     file.write(f"\nweight_decay = {weight_dacay}")

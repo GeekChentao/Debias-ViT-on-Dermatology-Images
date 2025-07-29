@@ -11,8 +11,12 @@ import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from transformers import AutoTokenizer, AutoModel
 import os
+import clip
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model_clip, preprocess = clip.load("ViT-B/32", device)
 
 train_data = pd.read_csv(os.path.join("..", "train_data.csv"))
 validation_data = pd.read_csv(os.path.join("..", "validation_data.csv"))
@@ -97,8 +101,8 @@ transform = transforms.Compose(
     ]
 )
 
-batch_size = 8
-num_workers = 1
+batch_size = 16
+num_workers = 2
 
 train_dataset = SkinDataset(train_data, transform)
 train_loader = DataLoader(
@@ -115,72 +119,43 @@ test_loader = DataLoader(
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# text_model = "sentence-transformers/all-MiniLM-L6-v2"
-text_model = "bert-base-uncased"
 
-
-# Vit with Transformer Model Constructure
-class VitTransformerClassifier(nn.Module):
+class ClipClassifier(nn.Module):
     def __init__(self):
-        super(VitTransformerClassifier, self).__init__()
+        super(ClipClassifier, self).__init__()
+        self.hidden_dim = 512
 
-        self.text_model = AutoModel.from_pretrained(text_model).to(device)
-        self.tokenizer = AutoTokenizer.from_pretrained(text_model)
-        self.text_feature_dim = 768
-
-        self.vit_model = vit_b_32(weights=ViT_B_32_Weights.DEFAULT).to(device)
-        self.vit_feature_dim = self.vit_model.heads.head.in_features
-        self.vit_model.heads.head = nn.Identity()
-
-        hidden_dim = 512
-
-        self.img_proj = nn.Sequential(
-            nn.Linear(self.vit_feature_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-        )
-
-        self.txt_proj = nn.Sequential(
-            nn.Linear(self.text_feature_dim, hidden_dim),
-            nn.LayerNorm(hidden_dim),
-            nn.ReLU(),
-        )
-
-        self.fusion = nn.Sequential(
-            nn.Linear(hidden_dim, hidden_dim),
+        self.fc = nn.Sequential(
+            nn.Linear(512 + 512, 512),
             nn.ReLU(),
             nn.Dropout(0.3),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.ReLU(),
+            nn.Linear(512, 2),
         )
-
-        self.classifier = nn.Linear(hidden_dim, 2)
 
     def forward(self, image, text):
-        text_tokenized = self.tokenizer(
-            text, padding=True, truncation=True, return_tensors="pt"
-        )
-        text_tokenized = {k: v.to(device) for k, v in text_tokenized.items()}
-        text_features = self.text_model(**text_tokenized).last_hidden_state[
-            :, 0, :
-        ]  # CLS token embedding
-        text_features = self.txt_proj(text_features)
+        max_words = 20
+        text = tuple(" ".join(t.split()[:max_words]) for t in text)
 
-        img_features = self.vit_model(image)
-        img_features = self.img_proj(img_features)
-        combined_features = img_features + text_features
-        fused = self.fusion(combined_features)
-        # combined_features = torch.cat((img_features, text_features), dim=1)
+        # Ensure text is a list of strings
+        if isinstance(text, tuple):
+            text = list(text)  # Convert tuple to list
+        elif isinstance(text, str):
+            text = [text]  # Convert single string to list
+        with torch.no_grad():
+            img_features = model_clip.encode_image(image.to(device)).float()
+            text_tokens = clip.tokenize(text).to(device)
+            text_features = model_clip.encode_text(text_tokens).float()
 
-        output = self.classifier(fused)
+        combined_features = torch.concat((img_features, text_features), dim=1)
+        output = self.fc(combined_features)
         return output
 
 
 checkpoint = "MONET_fulldesc_vit32b3_skin_SGD_Momentum_0.001_CosineAnnealingLR"
 checkpoint_path = f"{checkpoint}_best.pth"
-output_filename = f"{checkpoint}.txt"
+output_file = f"{checkpoint}.txt"
 
-model = VitTransformerClassifier().to(device)
+model = ClipClassifier().to(device)
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
 skin_metrics2 = {
@@ -191,6 +166,7 @@ skin_metrics6 = {
     i: {"total": 0, "correct": 0, "accuracy": None, "predict": list(), "true": list()}
     for i in range(1, 7)
 }
+
 
 model.eval()
 with torch.no_grad():
@@ -226,3 +202,27 @@ for key, item in skin_metrics6.items():
     print(
         f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
     )
+
+with open(output_file, "w") as file:
+    file.write("Test output:\n")
+    # file.write(f"\nvalidation loss = {val_losses}")
+    file.write(f"\nvit = 32B")
+    file.write(f"\ntokenizer = CLIP")
+    file.write(f"\nintegrate_way = concatenate")
+    file.write(f"\noptimizer = SGD_Momentum")
+    file.write(f"\nlearning_rate = {0.001}")
+    file.write(f"\nweight_decay = {1e-4}")
+    file.write(f"\nscheduler = CosineAnnealingLR")
+    file.write(f"\nbatch_size = {batch_size}")
+    # file.write(f"\nepochs = {epoch}")
+    file.write(f"\nmax_stop_count = {5}")
+    file.write(f"\ngrad_norm_clip = {1.0}")
+    for skin, metrics in skin_metrics6.items():
+        file.write(
+            f"\nskin tone {skin} true label:{metrics['true']}\nskin tone {skin} predicted label:{metrics['predict']}",
+        )
+
+    for skin, metrics in skin_metrics2.items():
+        file.write(
+            f"\nbinary skin tone {skin} true label:{metrics['true']}\nbinary skin tone {skin} predicted label:{metrics['predict']}",
+        )

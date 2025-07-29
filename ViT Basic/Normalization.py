@@ -11,7 +11,7 @@ from tqdm import tqdm
 import os
 
 train_data = pd.read_csv("train_data.csv")
-dir_path = "./Fitzpatric_subset/"
+dir_path = "../Fitzpatric_subset/"
 
 
 class ImageDataset(Dataset):

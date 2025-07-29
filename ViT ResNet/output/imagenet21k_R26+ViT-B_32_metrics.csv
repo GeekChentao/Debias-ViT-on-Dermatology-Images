@@ -1,0 +1,4 @@
+Hyper Parameters,Skin1 Accuracy,Skin1 Sensitivity,Skin1 Specificity,Skin1 Precision,Skin1 Score,Skin1 AUC,Skin2 Accuracy,Skin2 Sensitivity,Skin2 Specificity,Skin2 Precision,Skin2 Score,Skin2 AUC
+batch_size = 512  optimizer = Adam  learning_rate = 0.001  scheduler = fixed  , 0.6877, 0.8750, 0.5067, 0.6316, 0.7336, 0.6909, 0.7258, 0.9394, 0.4828, 0.6739, 0.7848, 0.7111
+batch_size = 512  optimizer = SGD  learning_rate = 0.001  scheduler = CosineAnnealingLR  , 0.7833, 0.7639, 0.8020, 0.7885, 0.7760, 0.7830, 0.7419, 0.7273, 0.7586, 0.7742, 0.7500, 0.7429
+batch_size = 512  optimizer = SGD  learning_rate = 0.001  scheduler = fixed  , 0.5085, 0.0000, 1.0000, 0.0000, 0.0000, 0.5000, 0.4677, 0.0000, 1.0000, 0.0000, 0.0000, 0.5000

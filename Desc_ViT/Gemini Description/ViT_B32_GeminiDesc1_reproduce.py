@@ -1,3 +1,5 @@
+#! /usr/bin/env python3.12
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,12 +13,12 @@ import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from transformers import AutoTokenizer, AutoModel
 import os
+import random
 
 
 train_data = pd.read_csv(os.path.join("..", "train_data.csv"))
-validation_data = pd.read_csv(os.path.join("..", "validation_data.csv"))
 test_data = pd.read_csv(os.path.join("..", "test_data.csv"))
-dir_path = "Fitzpatric_subset"
+dir_path = "../Fitzpatric_subset"
 
 skin_tones = ["Light skin. ", "Dark skin. "]
 
@@ -43,9 +45,23 @@ class ImageDataset(Dataset):
 
 
 class SkinDataset(Dataset):
-    def __init__(self, df, transform=None):
+    def __init__(self, df, transform=None, test_time_aug=False, num_aug=5, aug_id=0):
         self.df = df
         self.transform = transform
+        self.test_time_aug = test_time_aug
+        self.num_aug = num_aug
+        self.aug_id = aug_id
+
+        # Test-time augmentation transforms
+        self.tt_transforms = [
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ColorJitter(
+                brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05
+            ),
+            transforms.RandomResizedCrop(224, scale=(0.9, 1.0), ratio=(0.9, 1.1)),
+            transforms.RandomAffine(degrees=0, translate=(0.05, 0.05)),
+        ]
 
     def __len__(self):
         return len(self.df)
@@ -61,9 +77,25 @@ class SkinDataset(Dataset):
             skin_tones[0 if int(skin) <= 4 else 1]
             + self.df.iloc[idx]["Gemini Description"]
         )
-        if self.transform:
-            image = self.transform(image)
-        return image, int(skin), int(lesion), description
+
+        if self.test_time_aug:
+            aug_image = image.copy()
+            random.seed(2 + idx)
+            for i, transform in enumerate(
+                random.sample(self.tt_transforms, random.randint(1, 2))
+            ):
+                torch.manual_seed(2 + idx + i)
+                aug_image = transform(aug_image)
+            if self.transform:
+                aug_image = self.transform(aug_image)
+                # Add noise after converting to tensor
+                aug_image = aug_image + torch.randn_like(aug_image) * 0.01
+            return aug_image, int(skin), int(lesion), description
+        else:
+            if self.transform:
+                image = self.transform(image)
+                image = image + torch.randn_like(image) * 0.01
+            return image, int(skin), int(lesion), description
 
 
 def calculate_mean_std(loader):
@@ -106,11 +138,7 @@ train_dataset = SkinDataset(train_data, transform)
 train_loader = DataLoader(
     train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers
 )
-validation_dataset = SkinDataset(validation_data, transform)
-validation_loader = DataLoader(
-    validation_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
-)
-test_dataset = SkinDataset(test_data, transform)
+test_dataset = SkinDataset(test_data, transform, test_time_aug=True)
 test_loader = DataLoader(
     test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
 )
@@ -158,7 +186,7 @@ class VitTransformerClassifier(nn.Module):
 
 checkpoint = "GeminiDesc_vit32b1_skin_SGD_Momentum_0.001_CosineAnnealingLR"
 checkpoint_path = f"{checkpoint}_best.pth"
-output_filename = f"{checkpoint}.txt"
+output_file = f"{checkpoint}.txt"
 
 model = VitTransformerClassifier().to(device)
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
@@ -175,21 +203,56 @@ skin_metrics6 = {
 
 model.eval()
 with torch.no_grad():
-    for images, skins, labels, descriptions in test_loader:
-        images = images.to(device)
-        outputs = model(images, descriptions)
-        outputs = outputs.argmax(dim=-1).squeeze().tolist()
-        skins = skins.tolist()
-        labels = labels.tolist()
-        for output, skin, label in zip(outputs, skins, labels):
-            skin_metrics6[skin]["total"] += 1
-            skin_metrics6[skin]["correct"] += output == label
-            skin_metrics6[skin]["predict"].append(output)
-            skin_metrics6[skin]["true"].append(label)
-            skin_metrics2[1 if skin <= 4 else 2]["total"] += 1
-            skin_metrics2[1 if skin <= 4 else 2]["correct"] += output == label
-            skin_metrics2[1 if skin <= 4 else 2]["predict"].append(output)
-            skin_metrics2[1 if skin <= 4 else 2]["true"].append(label)
+    for batch_data in test_loader:
+        if isinstance(batch_data[0], list):  # Test-time augmentation
+            augmented_images, skins, labels, descriptions = batch_data
+            skins = skins.tolist()
+            labels = labels.tolist()
+
+            # Process each sample with its augmentations
+            for i in range(len(skins)):
+                sample_predictions = []
+                for aug_images in augmented_images:
+                    aug_images = aug_images.to(device)
+                    outputs = model(aug_images, [descriptions[i]] * len(aug_images))
+                    # Get class predictions (0 or 1)
+                    predictions = outputs.argmax(dim=-1).cpu().numpy()
+                    sample_predictions.extend(predictions)
+
+                # Majority vote
+                output = (
+                    1 if sum(sample_predictions) >= len(sample_predictions) / 2 else 0
+                )
+                print(f"output = {sum(sample_predictions)}")
+                print(f"sample_predictions = {len(sample_predictions)}")
+
+                skin = skins[i]
+                label = labels[i]
+
+                skin_metrics6[skin]["total"] += 1
+                skin_metrics6[skin]["correct"] += output == label
+                skin_metrics6[skin]["predict"].append(output)
+                skin_metrics6[skin]["true"].append(label)
+                skin_metrics2[1 if skin <= 4 else 2]["total"] += 1
+                skin_metrics2[1 if skin <= 4 else 2]["correct"] += output == label
+                skin_metrics2[1 if skin <= 4 else 2]["predict"].append(output)
+                skin_metrics2[1 if skin <= 4 else 2]["true"].append(label)
+        else:  # Original format
+            images, skins, labels, descriptions = batch_data
+            images = images.to(device)
+            outputs = model(images, descriptions)
+            outputs = outputs.argmax(dim=-1).squeeze().tolist()
+            skins = skins.tolist()
+            labels = labels.tolist()
+            for output, skin, label in zip(outputs, skins, labels):
+                skin_metrics6[skin]["total"] += 1
+                skin_metrics6[skin]["correct"] += output == label
+                skin_metrics6[skin]["predict"].append(output)
+                skin_metrics6[skin]["true"].append(label)
+                skin_metrics2[1 if skin <= 4 else 2]["total"] += 1
+                skin_metrics2[1 if skin <= 4 else 2]["correct"] += output == label
+                skin_metrics2[1 if skin <= 4 else 2]["predict"].append(output)
+                skin_metrics2[1 if skin <= 4 else 2]["true"].append(label)
 
 for key, item in skin_metrics2.items():
     item["accuracy"] = item["correct"] / item["total"]
@@ -207,3 +270,27 @@ for key, item in skin_metrics6.items():
     print(
         f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
     )
+
+with open(output_file, "w") as file:
+    file.write("Test output:\n")
+    # file.write(f"\nvalidation loss = {val_losses}")
+    file.write(f"\nvit = 32B")
+    file.write(f"\ntokenizer = sentence-transformers/all-MiniLM-L6-v2")
+    file.write(f"\nintegrate_way = concatenate")
+    file.write(f"\noptimizer = SGD_Momentum")
+    file.write(f"\nlearning_rate = {0.001}")
+    file.write(f"\nweight_decay = {1e-4}")
+    file.write(f"\nscheduler = CosineAnnealingLR")
+    file.write(f"\nbatch_size = {batch_size}")
+    # file.write(f"\nepochs = {epoch}")
+    file.write(f"\nmax_stop_count = {5}")
+    file.write(f"\ngrad_norm_clip = {1.0}")
+    for skin, metrics in skin_metrics6.items():
+        file.write(
+            f"\nskin tone {skin} true label:{metrics['true']}\nskin tone {skin} predicted label:{metrics['predict']}",
+        )
+
+    for skin, metrics in skin_metrics2.items():
+        file.write(
+            f"\nbinary skin tone {skin} true label:{metrics['true']}\nbinary skin tone {skin} predicted label:{metrics['predict']}",
+        )

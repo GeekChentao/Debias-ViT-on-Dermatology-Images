@@ -148,7 +148,6 @@ class VitTransformerClassifier(nn.Module):
 
         img_features = self.vit_model(image)
         combined_features = torch.cat((img_features, text_features), dim=1)
-
         output = self.fc(combined_features)
         return output
 
