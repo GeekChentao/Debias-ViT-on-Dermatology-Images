@@ -52,7 +52,7 @@ class SkinDataset(Dataset):
         img_filename = self.df.iloc[idx]["image_path"] + ".jpg"
         skin = self.df.iloc[idx]["skin_color"]
         lesion = self.df.iloc[idx]["lesion"]
-        img_path = os.path.join(dir_path, img_filename)
+        img_path = os.path.join("..", dir_path, img_filename)
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)

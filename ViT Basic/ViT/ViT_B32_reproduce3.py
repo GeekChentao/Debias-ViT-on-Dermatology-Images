@@ -32,7 +32,7 @@ model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
 
 test_data = pd.read_csv("../test_data.csv")
-dir_path = "./Fitzpatric_subset/"
+dir_path = "../Fitzpatric_subset/"
 
 
 class SkinDataset(Dataset):
@@ -135,6 +135,7 @@ for key, item in skin_metrics6.items():
 with open(output_file, "w") as file:
     file.write("Test output:\n")
     # file.write(f"\nvalidation loss = {val_losses}")
+    file.write(f"\nViT/B32")
     file.write(f"\nlearning_rate = {0.001}")
     file.write(f"\nweight_decay = {1e-4}")
     file.write(f"\nscheduler = {scheduler_type}")

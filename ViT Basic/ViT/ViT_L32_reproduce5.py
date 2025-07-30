@@ -135,6 +135,7 @@ for key, item in skin_metrics6.items():
 with open(output_file, "w") as file:
     file.write("Test output:\n")
     # file.write(f"\nvalidation loss = {val_losses}")
+    file.write(f"\nViT/L32")
     file.write(f"\nlearning_rate = {0.001}")
     file.write(f"\nweight_decay = {1e-4}")
     file.write(f"\nscheduler = {scheduler_type}")
