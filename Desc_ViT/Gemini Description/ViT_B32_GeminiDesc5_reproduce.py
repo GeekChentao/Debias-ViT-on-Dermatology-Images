@@ -1,3 +1,5 @@
+#! /usr/bin/env python3.12
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,13 +13,14 @@ import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from transformers import AutoTokenizer, AutoModel
 import os
+import time
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 train_data = pd.read_csv(os.path.join("..", "train_data.csv"))
 validation_data = pd.read_csv(os.path.join("..", "validation_data.csv"))
 test_data = pd.read_csv(os.path.join("..", "test_data.csv"))
-dir_path = "./Fitzpatric_subset/"
+dir_path = "../Fitzpatric_subset/"
 
 skin_tones = ["Light skin. ", "Dark skin. "]
 
@@ -158,14 +161,16 @@ class VitTransformerClassifier(nn.Module):
 
         self.classifier = nn.Linear(hidden_dim, 2)
 
-    def forward(self, image, text):
+    def forward(self, image, text, return_attention=False):
         text_tokenized = self.tokenizer(
             text, padding=True, truncation=True, return_tensors="pt"
         )
         text_tokenized = {k: v.to(device) for k, v in text_tokenized.items()}
-        text_features = self.text_model(**text_tokenized).last_hidden_state[
-            :, 0, :
-        ]  # CLS token embedding
+
+        # Get attention weights from text model
+        text_output = self.text_model(**text_tokenized, output_attentions=True)
+        text_features = text_output.last_hidden_state[:, 0, :]  # CLS token embedding
+        attention_weights = text_output.attentions  # List of attention matrices
         text_features = self.txt_proj(text_features)
 
         img_features = self.vit_model(image)
@@ -175,6 +180,8 @@ class VitTransformerClassifier(nn.Module):
         # combined_features = torch.cat((img_features, text_features), dim=1)
 
         output = self.classifier(fused)
+        if return_attention:
+            return output, attention_weights, text_tokenized
         return output
 
 
@@ -193,7 +200,103 @@ skin_metrics6 = {
 }
 
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
+
+
+def analyze_attention_importance_test(attention_weights, tokenized_text, tokenizer):
+    """Analyze token importance using attention weights for test data"""
+    # Average attention across all layers and heads
+    avg_attention = torch.stack(attention_weights).mean(
+        dim=0
+    )  # [layers, batch, heads, seq_len, seq_len]
+    avg_attention = avg_attention.mean(dim=(0, 2))  # Average across layers and heads
+
+    # Get attention to CLS token (first token)
+    cls_attention = avg_attention[:, 0]  # Attention from each token to CLS
+
+    # Decode tokens
+    tokens = tokenizer.convert_ids_to_tokens(tokenized_text["input_ids"][0])
+
+    # Create importance dictionary
+    importance = {}
+    for i, (token, attention_score) in enumerate(zip(tokens, cls_attention)):
+        if token != "[PAD]":
+            importance[token] = attention_score.item()
+
+    return importance
+
+
+def print_token_importance(importance_dict, top_k=10):
+    """Print top-k most important tokens"""
+    sorted_importance = sorted(
+        importance_dict.items(), key=lambda x: x[1], reverse=True
+    )
+    print(f"\nTop {top_k} most important tokens:")
+    for i, (token, score) in enumerate(sorted_importance[:top_k]):
+        print(f"{i+1}. {token}: {score:.4f}")
+
+
+def log_text_importance_test(model, batch_data, attention_tokens: dict[str, int]):
+    """Log text importance during training"""
+    images, skins, labels, descriptions = batch_data
+    images = images.to(device)
+
+    # Analyze all samples in batch
+    for i in range(len(descriptions)):
+        sample_image = images[i : i + 1]
+        sample_text = [descriptions[i]]
+        sample_label = labels[i]
+        sample_skin = skins[i]
+
+        if sample_skin <= 4:
+            continue
+
+        # Attention-based importance
+        with torch.no_grad():
+            output, attention_weights, tokenized_text = model(
+                sample_image, sample_text, return_attention=True
+            )
+            attention_importance = analyze_attention_importance_test(
+                attention_weights, tokenized_text, model.tokenizer
+            )
+
+        # Log results for this sample
+        # print(f"\nSample {i+1}/{len(descriptions)}:")
+        # print(f"Text: {sample_text[0][:100]}...")  # Truncate long text
+        result = output.argmax(dim=1).item()
+        # print(f"True label: {sample_label}, Predicted: {result}")
+
+        # print("Top 10 Attention-based tokens:")
+        sorted_attention = sorted(
+            attention_importance.items(), key=lambda x: x[1], reverse=True
+        )
+        for j, (token, score) in enumerate(sorted_attention[:10]):
+            print(f"  {j+1}. {token}: {score:.4f}")
+            if sample_label != result:
+                if token not in attention_tokens:
+                    attention_tokens[token] = 1
+                else:
+                    attention_tokens[token] += 1
+            else:
+                if token not in attention_tokens:
+                    attention_tokens[token] = -1
+                else:
+                    attention_tokens[token] -= 1
+
+
+def print_tokens(tokens: dict[str, int]):
+    sorted_tokens = sorted(tokens.items(), key=lambda x: x[1], reverse=True)
+    print(f"\nTop 20 most important tokens for wrong prediction:")
+    for token, score in sorted_tokens[:20]:
+        print(f"{token}: {score}")
+
+
+# test start
+attention_tokens = dict()
 model.eval()
+
+# Start timing
+test_start_time = time.time()
+
 with torch.no_grad():
     for images, skins, labels, descriptions in test_loader:
         images = images.to(device)
@@ -201,6 +304,11 @@ with torch.no_grad():
         outputs = outputs.argmax(dim=-1).squeeze().tolist()
         skins = skins.tolist()
         labels = labels.tolist()
+
+        # log importance features for test data (attention only)
+        batch_data = (images, skins, labels, descriptions)
+        log_text_importance_test(model, batch_data, attention_tokens)
+
         for output, skin, label in zip(outputs, skins, labels):
             skin_metrics6[skin]["total"] += 1
             skin_metrics6[skin]["correct"] += output == label
@@ -226,6 +334,17 @@ for key, item in skin_metrics6.items():
     print(
         f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
     )
+
+# End timing
+test_end_time = time.time()
+test_duration = test_end_time - test_start_time
+
+print(
+    f"\nTest completed in {test_duration:.2f} seconds ({test_duration/60:.2f} minutes)"
+)
+
+print("Attention tokens:")
+print_tokens(attention_tokens)
 
 with open(output_file, "w") as file:
     file.write("Test output:\n")
