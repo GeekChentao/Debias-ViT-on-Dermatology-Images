@@ -1,3 +1,5 @@
+#! /usr/bin/env python3.12
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,6 +13,7 @@ import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from transformers import AutoTokenizer, AutoModel
 import os
+import time
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -205,7 +208,7 @@ checkpoint_path = (
 )
 output_file = f"GeminiDesc_vit32b1_skin_{optimizer_type}_{lr}_{scheduler_type}.txt"
 
-
+start_time = time.time()
 for epoch in range(num_epochs):
     model.train()
     train_loss = 0.0
@@ -254,72 +257,23 @@ for epoch in range(num_epochs):
             print(f"Early stopping triggered at epoch {epoch+1}")
             break  # Stop training
 
-print("Training Complete! Test starts")
+end_time = time.time()
+print(
+    f"Training time: {end_time - start_time:.2f} seconds\nTraining Complete! Test starts"
+)
 
-skin_metrics2 = {
-    i: {"total": 0, "correct": 0, "accuracy": None, "predict": list(), "true": list()}
-    for i in range(1, 3)
-}
-skin_metrics6 = {
-    i: {"total": 0, "correct": 0, "accuracy": None, "predict": list(), "true": list()}
-    for i in range(1, 7)
-}
+
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.eval()
+
+start_time = time.perf_counter()
 with torch.no_grad():
     for images, skins, labels, descriptions in test_loader:
         images = images.to(device)
         outputs = model(images, descriptions)
         outputs = outputs.argmax(dim=-1).squeeze().tolist()
-        skins = skins.tolist()
-        labels = labels.tolist()
-        for output, skin, label in zip(outputs, skins, labels):
-            skin_metrics6[skin]["total"] += 1
-            skin_metrics6[skin]["correct"] += output == label
-            skin_metrics6[skin]["predict"].append(output)
-            skin_metrics6[skin]["true"].append(label)
-            skin_metrics2[1 if skin <= 4 else 2]["total"] += 1
-            skin_metrics2[1 if skin <= 4 else 2]["correct"] += output == label
-            skin_metrics2[1 if skin <= 4 else 2]["predict"].append(output)
-            skin_metrics2[1 if skin <= 4 else 2]["true"].append(label)
-
-for key, item in skin_metrics2.items():
-    item["accuracy"] = item["correct"] / item["total"]
-for key, item in skin_metrics6.items():
-    item["accuracy"] = item["correct"] / item["total"]
-
-print("2 skin results:")
-for key, item in skin_metrics2.items():
-    print(
-        f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
-    )
-
-print("6 skin results:")
-for key, item in skin_metrics6.items():
-    print(
-        f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
-    )
-
-with open(output_file, "w") as file:
-    file.write("Test output:\n")
-    file.write(f"\nvalidation loss = {val_losses}")
-    file.write(f"\nvit = 32B")
-    file.write(f"\ntokenizer = {text_model}")
-    file.write(f"\nintegrate_way = concatenate")
-    file.write(f"\noptimizer = {optimizer_type}")
-    file.write(f"\nlearning_rate = {lr}")
-    file.write(f"\nweight_decay = {weight_dacay}")
-    file.write(f"\nscheduler = {scheduler_type}")
-    file.write(f"\nbatch_size = {batch_size}")
-    file.write(f"\nepochs = {epoch}")
-    file.write(f"\nmax_stop_count = {patience}")
-    file.write(f"\ngrad_norm_clip = {grad_norm_clip}")
-    for skin, metrics in skin_metrics6.items():
-        file.write(
-            f"\nskin tone {skin} true label:{metrics['true']}\nskin tone {skin} predicted label:{metrics['predict']}",
-        )
-
-    for skin, metrics in skin_metrics2.items():
-        file.write(
-            f"\nbinary skin tone {skin} true label:{metrics['true']}\nbinary skin tone {skin} predicted label:{metrics['predict']}",
-        )
+end_time = time.perf_counter()
+print(
+    f"Testing time: {(end_time - start_time)/len(test_dataset)*1000:.2f} milliseconds/sample"
+)
+print(f"size = {len(test_dataset)}")

@@ -1,3 +1,5 @@
+#! /usr/bin/env python3.12
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -17,7 +19,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 train_data = pd.read_csv(os.path.join("..", "train_data.csv"))
 validation_data = pd.read_csv(os.path.join("..", "validation_data.csv"))
 test_data = pd.read_csv(os.path.join("..", "test_data.csv"))
-dir_path = "./Fitzpatric_subset/"
+dir_path = "../Fitzpatric_subset/"
 
 skin_tones = ["Light skin. ", "Dark skin. "]
 

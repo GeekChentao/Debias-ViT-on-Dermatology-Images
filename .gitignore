@@ -1,2 +1,4 @@
 **/*.pth
 **/*.npz
+ViT Basic/plot.ipynb
+cmd.txt
