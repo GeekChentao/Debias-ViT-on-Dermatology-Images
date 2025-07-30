@@ -46,27 +46,6 @@ class ImageDataset(Dataset):
         return image
 
 
-class ImageDataset(Dataset):
-    def __init__(self, df, transform=None):
-        self.df = df
-        self.transform = transforms.Compose(
-            [transforms.Resize((224, 224)), transforms.ToTensor()]
-        )
-
-    def __len__(self):
-        return len(self.df)
-
-    def __getitem__(self, idx):
-        img_filename = self.df.iloc[idx]["image_path"]
-        img_filename += ".jpg"
-        img_path = os.path.join("..", dir_path, img_filename)
-        image = Image.open(img_path).convert("RGB")
-        if self.transform:
-            image = self.transform(image)
-
-        return image
-
-
 class SkinDataset(Dataset):
     def __init__(self, df, transform=None, test_time_aug=True, seed=1):
         self.df = df
