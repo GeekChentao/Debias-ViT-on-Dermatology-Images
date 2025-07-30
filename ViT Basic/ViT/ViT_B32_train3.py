@@ -1,3 +1,5 @@
+#! /usr/bin/env python3.12
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,10 +11,11 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
+import time
 
-train_data = pd.read_csv("./train_data.csv")
-validation_data = pd.read_csv("./validation_data.csv")
-test_data = pd.read_csv("./test_data.csv")
+train_data = pd.read_csv("../train_data.csv")
+validation_data = pd.read_csv("../validation_data.csv")
+test_data = pd.read_csv("../test_data.csv")
 dir_path = "../Fitzpatric_subset/"
 
 
@@ -29,7 +32,7 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         img_filename = self.df.iloc[idx]["image_path"]
         img_filename += ".jpg"
-        img_path = os.path.join(dir_path, img_filename)
+        img_path = os.path.join("..", dir_path, img_filename)
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
@@ -118,10 +121,10 @@ counter = 0
 val_losses = list()
 
 # Adam Optimizer
-lr = 0.001
-weight_dacay = 1e-4
-optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_dacay)
-optimizer_type = "Adam"
+# lr = 0.001
+# weight_dacay = 1e-4
+# optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_dacay)
+# optimizer_type = "Adam"
 
 # AdamW Optimizer
 # lr = 0.001
@@ -130,25 +133,25 @@ optimizer_type = "Adam"
 # optimizer_type = "AdamW"
 
 # SGD with Momentum Optimizer
-# lr = 0.001
-# weight_dacay = 1e-4
-# momentum = 0.9
-# optimizer = optim.SGD(
-#     model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_dacay
-# )
-# optimizer_type = "SGD_Momentum"
+lr = 0.001
+weight_dacay = 1e-4
+momentum = 0.9
+optimizer = optim.SGD(
+    model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_dacay
+)
+optimizer_type = "SGD_Momentum"
 
 # Add LR Scheduler
 # scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
 # scheduler_type = "StepLR"
 
 # Add Cosine Annealing LR Scheduler
-# scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs)
-# scheduler_type = "CosineAnnealingLR"
+scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs)
+scheduler_type = "CosineAnnealingLR"
 
-scheduler = None
-if not scheduler:
-    scheduler_type = "fixed"
+# scheduler = None
+# if not scheduler:
+#     scheduler_type = "fixed"
 
 grad_norm_clip = 1
 checkpoint_path = (
@@ -160,6 +163,7 @@ output_file = f"torchvision_vit32b_skin_{optimizer_type}_{lr}_{scheduler_type}.t
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
+start_time = time.time()
 for epoch in range(num_epochs):
     model.train()
     train_loss = 0.0
@@ -181,7 +185,7 @@ for epoch in range(num_epochs):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             loss = criterion(outputs, labels)
-            print(loss)
+            # print(loss)
             val_loss += loss.item()
 
     val_loss /= len(validation_loader)
@@ -204,7 +208,11 @@ for epoch in range(num_epochs):
             print(f"Early stopping triggered at epoch {epoch+1}")
             break  # Stop training
 
-print("Training Complete! Test starts")
+end_time = time.time()
+print(
+    f"Training time: {end_time - start_time:.2f} seconds\nTraining Complete! Test starts"
+)
+
 
 skin_metrics2 = {
     i: {"total": 0, "correct": 0, "accuracy": None, "predict": list(), "true": list()}

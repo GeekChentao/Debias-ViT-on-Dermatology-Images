@@ -1,6 +1,6 @@
 #! /usr/bin/env python3.12
 
-from torchvision.models import vit_b_32, ViT_B_32_Weights
+from torchvision.models import vit_l_32, ViT_L_32_Weights
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torch.nn as nn
@@ -10,7 +10,7 @@ import os
 from PIL import Image
 import random
 
-model = vit_b_32(weights=ViT_B_32_Weights.DEFAULT)
+model = vit_l_32(weights=ViT_L_32_Weights.DEFAULT)
 num_features = model.heads.head.in_features
 model.heads.head = nn.Linear(num_features, 2)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -25,14 +25,14 @@ scheduler_type = "CosineAnnealingLR"
 optimizer_type = "SGD_Momentum"
 # optimizer_type = "Adam"
 
-checkpoint = f"torchvision_vit32b_skin_{optimizer_type}_{lr}_{scheduler_type}"
+checkpoint = f"torchvision_vit32l_skin_{optimizer_type}_{lr}_{scheduler_type}"
 checkpoint_path = checkpoint + "_best.pth"
 output_file = checkpoint + ".txt"
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 
 
 test_data = pd.read_csv("../test_data.csv")
-dir_path = "./Fitzpatric_subset/"
+dir_path = "../Fitzpatric_subset/"
 
 
 class SkinDataset(Dataset):
@@ -87,7 +87,7 @@ transform = transforms.Compose(
     ]
 )
 
-test_dataset = SkinDataset(test_data, transform, test_time_aug=True)
+test_dataset = SkinDataset(test_data, transform, test_time_aug=False)
 test_loader = DataLoader(test_dataset, batch_size=32, num_workers=4)
 
 skin_metrics2 = {

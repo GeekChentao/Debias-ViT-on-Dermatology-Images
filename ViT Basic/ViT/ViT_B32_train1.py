@@ -12,9 +12,9 @@ from tqdm import tqdm
 import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 
-train_data = pd.read_csv("./train_data.csv")
-validation_data = pd.read_csv("./validation_data.csv")
-test_data = pd.read_csv("./test_data.csv")
+train_data = pd.read_csv("../train_data.csv")
+validation_data = pd.read_csv("../validation_data.csv")
+test_data = pd.read_csv("../test_data.csv")
 dir_path = "../Fitzpatric_subset/"
 
 
@@ -31,7 +31,7 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         img_filename = self.df.iloc[idx]["image_path"]
         img_filename += ".jpg"
-        img_path = os.path.join(dir_path, img_filename)
+        img_path = os.path.join("..", dir_path, img_filename)
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
@@ -120,10 +120,10 @@ counter = 0
 val_losses = list()
 
 # Adam Optimizer
-# lr = 0.001
-# weight_dacay = 1e-4
-# optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_dacay)
-# optimizer_type = "Adam"
+lr = 0.001
+weight_dacay = 1e-4
+optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_dacay)
+optimizer_type = "Adam"
 
 # AdamW Optimizer
 # lr = 0.001
@@ -132,13 +132,13 @@ val_losses = list()
 # optimizer_type = "AdamW"
 
 # SGD with Momentum Optimizer
-lr = 0.001
-weight_dacay = 1e-4
-momentum = 0.9
-optimizer = optim.SGD(
-    model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_dacay
-)
-optimizer_type = "SGD_Momentum"
+# lr = 0.001
+# weight_dacay = 1e-4
+# momentum = 0.9
+# optimizer = optim.SGD(
+#     model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_dacay
+# )
+# optimizer_type = "SGD_Momentum"
 
 # Add LR Scheduler
 # scheduler = StepLR(optimizer, step_size=30, gamma=0.1)
@@ -183,7 +183,7 @@ for epoch in range(num_epochs):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             loss = criterion(outputs, labels)
-            print(loss)
+            # print(loss)
             val_loss += loss.item()
 
     val_loss /= len(validation_loader)

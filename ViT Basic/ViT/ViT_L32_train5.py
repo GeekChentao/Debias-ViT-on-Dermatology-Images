@@ -4,17 +4,18 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torchvision.transforms as transforms
-from torchvision.models import vit_b_32, ViT_B_32_Weights
+from torchvision.models import vit_l_32, ViT_L_32_Weights
 import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
+import time
 
-train_data = pd.read_csv("./train_data.csv")
-validation_data = pd.read_csv("./validation_data.csv")
-test_data = pd.read_csv("./test_data.csv")
+train_data = pd.read_csv("../train_data.csv")
+validation_data = pd.read_csv("../validation_data.csv")
+test_data = pd.read_csv("../test_data.csv")
 dir_path = "../Fitzpatric_subset/"
 
 
@@ -31,7 +32,7 @@ class ImageDataset(Dataset):
     def __getitem__(self, idx):
         img_filename = self.df.iloc[idx]["image_path"]
         img_filename += ".jpg"
-        img_path = os.path.join(dir_path, img_filename)
+        img_path = os.path.join("..", dir_path, img_filename)
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
@@ -51,7 +52,7 @@ class SkinDataset(Dataset):
         img_filename = self.df.iloc[idx]["image_path"] + ".jpg"
         skin = self.df.iloc[idx]["skin_color"]
         lesion = self.df.iloc[idx]["lesion"]
-        img_path = os.path.join(dir_path, img_filename)
+        img_path = os.path.join("..", dir_path, img_filename)
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
@@ -108,7 +109,7 @@ test_loader = DataLoader(
     test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
 )
 
-model = vit_b_32(weights=ViT_B_32_Weights.DEFAULT)
+model = vit_l_32(weights=ViT_L_32_Weights.DEFAULT)
 num_features = model.heads.head.in_features
 model.heads.head = nn.Linear(num_features, 2)  # Assuming 2 classes
 criterion = nn.CrossEntropyLoss()
@@ -154,7 +155,7 @@ scheduler_type = "CosineAnnealingLR"
 
 grad_norm_clip = 1
 checkpoint_path = (
-    f"torchvision_vit32b_skin_{optimizer_type}_{lr}_{scheduler_type}_best.pth"
+    f"torchvision_vit32l_skin_{optimizer_type}_{lr}_{scheduler_type}_best.pth"
 )
 output_file = f"torchvision_vit32b_skin_{optimizer_type}_{lr}_{scheduler_type}.txt"
 
@@ -162,6 +163,7 @@ output_file = f"torchvision_vit32b_skin_{optimizer_type}_{lr}_{scheduler_type}.t
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)
 
+start_time = time.time()
 for epoch in range(num_epochs):
     model.train()
     train_loss = 0.0
@@ -183,7 +185,7 @@ for epoch in range(num_epochs):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images)
             loss = criterion(outputs, labels)
-            print(loss)
+            # print(loss)
             val_loss += loss.item()
 
     val_loss /= len(validation_loader)
@@ -206,7 +208,10 @@ for epoch in range(num_epochs):
             print(f"Early stopping triggered at epoch {epoch+1}")
             break  # Stop training
 
-print("Training Complete! Test starts")
+end_time = time.time()
+print(
+    f"Training time: {end_time - start_time:.2f} seconds\nTraining Complete! Test starts"
+)
 
 skin_metrics2 = {
     i: {"total": 0, "correct": 0, "accuracy": None, "predict": list(), "true": list()}
