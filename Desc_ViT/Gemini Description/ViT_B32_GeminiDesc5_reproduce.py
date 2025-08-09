@@ -199,8 +199,6 @@ skin_metrics6 = {
     for i in range(1, 7)
 }
 
-model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-
 
 def analyze_attention_importance_test(attention_weights, tokenized_text, tokenizer):
     """Analyze token importance using attention weights for test data"""
@@ -235,7 +233,14 @@ def print_token_importance(importance_dict, top_k=10):
         print(f"{i+1}. {token}: {score:.4f}")
 
 
-def log_text_importance_test(model, batch_data, attention_tokens: dict[str, int]):
+def log_text_importance_test(
+    model,
+    batch_data,
+    attention_tokens_dark_correct: dict[str, int],
+    attention_tokens_dark_wrong: dict[str, int],
+    attention_tokens_light_correct: dict[str, int],
+    attention_tokens_light_wrong: dict[str, int],
+):
     """Log text importance during training"""
     images, skins, labels, descriptions = batch_data
     images = images.to(device)
@@ -246,9 +251,6 @@ def log_text_importance_test(model, batch_data, attention_tokens: dict[str, int]
         sample_text = [descriptions[i]]
         sample_label = labels[i]
         sample_skin = skins[i]
-
-        if sample_skin <= 4:
-            continue
 
         # Attention-based importance
         with torch.no_grad():
@@ -270,33 +272,45 @@ def log_text_importance_test(model, batch_data, attention_tokens: dict[str, int]
             attention_importance.items(), key=lambda x: x[1], reverse=True
         )
         for j, (token, score) in enumerate(sorted_attention[:10]):
-            print(f"  {j+1}. {token}: {score:.4f}")
+            # print(f"  {j+1}. {token}: {score:.4f}")
             if sample_label != result:
-                if token not in attention_tokens:
-                    attention_tokens[token] = 1
+                if sample_skin <= 4:
+                    if token not in attention_tokens_light_wrong:
+                        attention_tokens_light_wrong[token] = 1
+                    else:
+                        attention_tokens_light_wrong[token] += 1
                 else:
-                    attention_tokens[token] += 1
+                    if token not in attention_tokens_dark_wrong:
+                        attention_tokens_dark_wrong[token] = 1
+                    else:
+                        attention_tokens_dark_wrong[token] += 1
             else:
-                if token not in attention_tokens:
-                    attention_tokens[token] = -1
+                if sample_skin <= 4:
+                    if token not in attention_tokens_light_correct:
+                        attention_tokens_light_correct[token] = 1
+                    else:
+                        attention_tokens_light_correct[token] += 1
                 else:
-                    attention_tokens[token] -= 1
+                    if token not in attention_tokens_dark_correct:
+                        attention_tokens_dark_correct[token] = 1
+                    else:
+                        attention_tokens_dark_correct[token] += 1
 
 
 def print_tokens(tokens: dict[str, int]):
     sorted_tokens = sorted(tokens.items(), key=lambda x: x[1], reverse=True)
-    print(f"\nTop 20 most important tokens for wrong prediction:")
     for token, score in sorted_tokens[:20]:
         print(f"{token}: {score}")
 
 
 # test start
-attention_tokens = dict()
+attention_tokens_dark_correct = dict()
+attention_tokens_dark_wrong = dict()
+attention_tokens_light_correct = dict()
+attention_tokens_light_wrong = dict()
+
+model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.eval()
-
-# Start timing
-test_start_time = time.time()
-
 with torch.no_grad():
     for images, skins, labels, descriptions in test_loader:
         images = images.to(device)
@@ -307,7 +321,14 @@ with torch.no_grad():
 
         # log importance features for test data (attention only)
         batch_data = (images, skins, labels, descriptions)
-        log_text_importance_test(model, batch_data, attention_tokens)
+        log_text_importance_test(
+            model,
+            batch_data,
+            attention_tokens_dark_correct,
+            attention_tokens_dark_wrong,
+            attention_tokens_light_correct,
+            attention_tokens_light_wrong,
+        )
 
         for output, skin, label in zip(outputs, skins, labels):
             skin_metrics6[skin]["total"] += 1
@@ -335,16 +356,6 @@ for key, item in skin_metrics6.items():
         f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
     )
 
-# End timing
-test_end_time = time.time()
-test_duration = test_end_time - test_start_time
-
-print(
-    f"\nTest completed in {test_duration:.2f} seconds ({test_duration/60:.2f} minutes)"
-)
-
-print("Attention tokens:")
-print_tokens(attention_tokens)
 
 with open(output_file, "w") as file:
     file.write("Test output:\n")

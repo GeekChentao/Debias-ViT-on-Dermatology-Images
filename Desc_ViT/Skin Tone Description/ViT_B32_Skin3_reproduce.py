@@ -1,3 +1,5 @@
+#! /usr/bin/env python3.12
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,7 +12,6 @@ from tqdm import tqdm
 import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from transformers import AutoTokenizer, AutoModel
-import os
 import clip
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"

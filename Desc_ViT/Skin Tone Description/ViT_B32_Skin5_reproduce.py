@@ -56,7 +56,6 @@ class SkinDataset(Dataset):
         # Test-time augmentation transforms
         self.tt_transforms = [
             transforms.RandomHorizontalFlip(p=0.5),
-            # transforms.RandomRotation(degrees=10),
             transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
         ]
 

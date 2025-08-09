@@ -1,3 +1,5 @@
+#! /usr/bin/env python3.12
+
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torch.nn as nn
@@ -5,6 +7,7 @@ import torch
 import pandas as pd
 import os
 from PIL import Image
+import random
 
 
 class BasicCNN(nn.Module):
@@ -62,9 +65,17 @@ dir_path = "../Fitzpatric_subset/"
 
 
 class SkinDataset(Dataset):
-    def __init__(self, df, transform=None):
+    def __init__(self, df, transform=None, test_time_aug=True, seed=1):
         self.df = df
         self.transform = transform
+        self.test_time_aug = test_time_aug
+        self.seed = seed
+
+        # Test-time augmentation transforms
+        self.tt_transforms = [
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+        ]
 
     def __len__(self):
         return len(self.df)
@@ -73,12 +84,30 @@ class SkinDataset(Dataset):
         img_filename = self.df.iloc[idx]["image_path"] + ".jpg"
         skin = self.df.iloc[idx]["skin_color"]
         lesion = self.df.iloc[idx]["lesion"]
-        img_path = os.path.join(dir_path, img_filename)
+        img_path = os.path.join("..", dir_path, img_filename)
         image = Image.open(img_path).convert("RGB")
-        if self.transform:
-            image = self.transform(image)
 
-        return image, skin, lesion
+        if self.test_time_aug:
+            aug_image = image.copy()
+            if self.seed is not None:
+                random.seed(self.seed + idx)
+                torch.manual_seed(self.seed + idx)
+            for t in self.tt_transforms:
+                aug_image = t(aug_image)
+
+            if self.transform:
+                aug_image = self.transform(aug_image)
+                # Add random erasing after converting to tensor
+                aug_image = transforms.RandomErasing(p=0.2, scale=(0.01, 0.05))(
+                    aug_image
+                )
+                # Add noise after converting to tensor
+                aug_image = aug_image + torch.randn_like(aug_image) * 0.01
+            return aug_image, int(skin), int(lesion)
+        else:
+            if self.transform:
+                image = self.transform(image)
+            return image, int(skin), int(lesion)
 
 
 mean = [0.6373, 0.4955, 0.4401]
@@ -91,7 +120,7 @@ transform = transforms.Compose(
     ]
 )
 
-test_dataset = SkinDataset(test_data, transform)
+test_dataset = SkinDataset(test_data, transform, test_time_aug=True)
 test_loader = DataLoader(test_dataset, batch_size=32, num_workers=4)
 
 skin_metrics2 = {

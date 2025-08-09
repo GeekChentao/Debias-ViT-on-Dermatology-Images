@@ -1,4 +1,0 @@
-Hyper Parameters,Skin1 Accuracy,Skin1 Sensitivity,Skin1 Specificity,Skin1 Precision,Skin1 Score,Skin1 AUC,Skin2 Accuracy,Skin2 Sensitivity,Skin2 Specificity,Skin2 Precision,Skin2 Score,Skin2 AUC
-learning_rate = 0.001  weight_decay = 0.0001  scheduler = fixed  batch_size = 32  epochs = 16  max_stop_count = 5  grad_norm_clip = 1  ,0.6109,0.6562,0.5671,0.5943,0.6238,0.6117,0.6129,0.6061,0.6207,0.6452,0.625,0.6134
-learning_rate = 0.001  weight_decay = 0.0001  scheduler = CosineAnnealingLR  max_stop_count = 5  grad_norm_clip = 1  ,0.8072,0.7847,0.8289,0.8159,0.8,0.8068,0.8065,0.7273,0.8966,0.8889,0.8,0.8119
-learning_rate = 0.001  weight_decay = 0.0001  scheduler = fixed  max_stop_count = 5  grad_norm_clip = 1  ,0.8123,0.8229,0.802,0.8007,0.8116,0.8125,0.7258,0.7879,0.6552,0.7222,0.7536,0.7215

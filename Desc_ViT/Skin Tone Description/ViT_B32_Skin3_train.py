@@ -1,3 +1,5 @@
+#! /usr/bin/env python3.12
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -10,8 +12,9 @@ from tqdm import tqdm
 import os
 from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from transformers import AutoTokenizer, AutoModel
-import os
 import clip
+import psutil
+import time
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -21,9 +24,56 @@ model_clip, preprocess = clip.load("ViT-B/32", device)
 train_data = pd.read_csv(os.path.join("..", "train_data.csv"))
 validation_data = pd.read_csv(os.path.join("..", "validation_data.csv"))
 test_data = pd.read_csv(os.path.join("..", "test_data.csv"))
-dir_path = "./Fitzpatric_subset/"
-
+dir_path = "../Fitzpatric_subset/"
 skin_tones = ["Light skin. ", "Dark skin. "]
+track_memory = False
+
+
+class MemoryTracker:
+    """Track memory usage throughout training and testing phases"""
+
+    def __init__(self):
+        self.max_gpu_memory = 0
+        self.max_cpu_memory = 0
+        self.total_params = 0
+
+    def log_memory(self, phase="", epoch=None, batch=None):
+        """Log current memory usage"""
+        self.total_params = max(
+            self.total_params, sum(p.numel() for p in model.parameters())
+        )
+
+        # Get current memory
+        gpu_memory = (
+            torch.cuda.memory_allocated() / (1024 * 1024)
+            if torch.cuda.is_available()
+            else 0
+        )
+        cpu_memory = psutil.Process().memory_info().rss / (1024 * 1024)
+
+        # Update max memory
+        self.max_gpu_memory = max(self.max_gpu_memory, gpu_memory)
+        self.max_cpu_memory = max(self.max_cpu_memory, cpu_memory)
+
+        return gpu_memory, cpu_memory
+
+    def print_summary(self):
+        """Print memory usage summary"""
+        print(f"\n=== Memory Usage Summary ===")
+        print(f"Total Parameters: {self.total_params:,}")
+        print(f"Max GPU Memory: {self.max_gpu_memory:.2f} MB")
+        print(f"Max CPU Memory: {self.max_cpu_memory:.2f} MB")
+        print(
+            f"Parameter Memory (estimated): {self.total_params * 4 / (1024 * 1024):.2f} MB"
+        )
+
+
+if track_memory:
+    memory_tracker = MemoryTracker()
+    print("Memory tracking is enabled")
+else:
+    memory_tracker = None
+    print("Time tracking is enabled")
 
 
 class ImageDataset(Dataset):
@@ -117,8 +167,6 @@ test_loader = DataLoader(
     test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers
 )
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 
 class ClipClassifier(nn.Module):
     def __init__(self):
@@ -197,10 +245,11 @@ checkpoint_path = (
 output_filename = f"SkinDesc_vit32b3_skin_{optimizer_type}_{lr}_{scheduler_type}.txt"
 
 
+start_time = time.time()
 for epoch in range(num_epochs):
     model.train()
     train_loss = 0.0
-    for images, _, labels, descriptions in train_loader:
+    for batch_idx, (images, _, labels, descriptions) in enumerate(train_loader):
         images, labels = images.to(device), labels.to(device)
         optimizer.zero_grad()
         outputs = model(images, descriptions)
@@ -210,20 +259,29 @@ for epoch in range(num_epochs):
         optimizer.step()
         train_loss += loss.item()
 
+        if track_memory:
+            if batch_idx % 8 == 0:
+                memory_tracker.log_memory(
+                    phase="training_batch", epoch=epoch, batch=batch_idx
+                )
+
     model.eval()
     val_loss = 0.0
     with torch.no_grad():
-        for (
-            images,
-            _,
-            labels,
-            descriptions,
-        ) in validation_loader:  # Use validation dataloader
+        for batch_idx, (images, _, labels, descriptions) in enumerate(
+            validation_loader
+        ):
             images, labels = images.to(device), labels.to(device)
             outputs = model(images, descriptions)
             loss = criterion(outputs, labels)
             # print(loss)
             val_loss += loss.item()
+
+            if track_memory:
+                if batch_idx % 8 == 0:
+                    memory_tracker.log_memory(
+                        phase="validation_batch", epoch=epoch, batch=batch_idx
+                    )
 
     val_loss /= len(validation_loader)
     val_losses.append(val_loss)
@@ -245,74 +303,33 @@ for epoch in range(num_epochs):
             print(f"Early stopping triggered at epoch {epoch+1}")
             break  # Stop training
 
-print("Training Complete! Test starts")
+    if track_memory:
+        break
 
-skin_metrics2 = {
-    i: {"total": 0, "correct": 0, "accuracy": None, "predict": list(), "true": list()}
-    for i in range(1, 3)
-}
-skin_metrics6 = {
-    i: {"total": 0, "correct": 0, "accuracy": None, "predict": list(), "true": list()}
-    for i in range(1, 7)
-}
+end_time = time.time()
+print(
+    f"Training time: {end_time - start_time:.2f} seconds\nTraining Complete! Test starts"
+)
+
 
 model.load_state_dict(torch.load(checkpoint_path, map_location=device))
 model.eval()
+
+start_time = time.perf_counter()
 with torch.no_grad():
-    for images, skins, labels, descriptions in test_loader:
+    for batch_idx, (images, skins, labels, descriptions) in enumerate(test_loader):
         images = images.to(device)
         outputs = model(images, descriptions)
         outputs = outputs.argmax(dim=-1).squeeze().tolist()
-        skins = skins.tolist()
-        labels = labels.tolist()
-        for output, skin, label in zip(outputs, skins, labels):
-            skin_metrics6[skin]["total"] += 1
-            skin_metrics6[skin]["correct"] += output == label
-            skin_metrics6[skin]["predict"].append(output)
-            skin_metrics6[skin]["true"].append(label)
-            skin_metrics2[1 if skin <= 4 else 2]["total"] += 1
-            skin_metrics2[1 if skin <= 4 else 2]["correct"] += output == label
-            skin_metrics2[1 if skin <= 4 else 2]["predict"].append(output)
-            skin_metrics2[1 if skin <= 4 else 2]["true"].append(label)
 
-for key, item in skin_metrics2.items():
-    item["accuracy"] = item["correct"] / item["total"]
-for key, item in skin_metrics6.items():
-    item["accuracy"] = item["correct"] / item["total"]
+        if track_memory:
+            if batch_idx % 8 == 0:
+                memory_tracker.log_memory(phase="testing_batch", batch=batch_idx)
 
-print("2 skin results:")
-for key, item in skin_metrics2.items():
-    print(
-        f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
-    )
+end_time = time.perf_counter()
+print(
+    f"Testing time: {(end_time - start_time)/len(test_dataset)*1000:.2f} ms\nTesting Complete!"
+)
 
-print("6 skin results:")
-for key, item in skin_metrics6.items():
-    print(
-        f"skin{key} total={item['total']}, correct={item['correct']}, accuracy={item['accuracy']}"
-    )
-
-
-with open(output_filename, "w") as file:
-    file.write("Test output:\n")
-    file.write(f"\nvalidation loss = {val_losses}")
-    file.write(f"\nvit = 32B")
-    file.write(f"\ntokenizer = CLIP")
-    file.write(f"\nintegrate_way = concatenation")
-    file.write(f"\noptimizer = {optimizer_type}")
-    file.write(f"\nlearning_rate = {lr}")
-    file.write(f"\nweight_decay = {weight_dacay}")
-    file.write(f"\nscheduler = {scheduler_type}")
-    file.write(f"\nbatch_size = {batch_size}")
-    file.write(f"\nepochs = {epoch}")
-    file.write(f"\nmax_stop_count = {patience}")
-    file.write(f"\ngrad_norm_clip = {grad_norm_clip}")
-    for skin, metrics in skin_metrics6.items():
-        file.write(
-            f"\nskin tone {skin} true label:{metrics['true']}\nskin tone {skin} predicted label:{metrics['predict']}",
-        )
-
-    for skin, metrics in skin_metrics2.items():
-        file.write(
-            f"\nbinary skin tone {skin} true label:{metrics['true']}\nbinary skin tone {skin} predicted label:{metrics['predict']}",
-        )
+if track_memory:
+    memory_tracker.print_summary()

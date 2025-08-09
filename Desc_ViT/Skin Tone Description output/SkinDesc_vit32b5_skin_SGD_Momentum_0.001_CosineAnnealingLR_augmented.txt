@@ -1,6 +1,6 @@
 Test output:
 
-vit = 32B
+vit = 32B_DS
 tokenizer = bert-base-uncased
 integrate_way = fusion
 optimizer = SGD_Momentum

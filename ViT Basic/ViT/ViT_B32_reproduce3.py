@@ -36,13 +36,15 @@ dir_path = "../Fitzpatric_subset/"
 
 
 class SkinDataset(Dataset):
-    def __init__(self, df, transform=None, test_time_aug=True):
+    def __init__(self, df, transform=None, test_time_aug=True, seed=1):
         self.df = df
         self.transform = transform
         self.test_time_aug = test_time_aug
+        self.seed = seed
+
+        # Test-time augmentation transforms
         self.tt_transforms = [
             transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomRotation(degrees=10),
             transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
         ]
 
@@ -58,10 +60,12 @@ class SkinDataset(Dataset):
 
         if self.test_time_aug:
             aug_image = image.copy()
-            random.seed(2 + idx)
-            for i, transform in enumerate(random.sample(self.tt_transforms, 2)):
-                torch.manual_seed(2 + idx + i)
-                aug_image = transform(aug_image)
+            if self.seed is not None:
+                random.seed(self.seed + idx)
+                torch.manual_seed(self.seed + idx)
+            for t in self.tt_transforms:
+                aug_image = t(aug_image)
+
             if self.transform:
                 aug_image = self.transform(aug_image)
                 # Add random erasing after converting to tensor
@@ -87,7 +91,7 @@ transform = transforms.Compose(
     ]
 )
 
-test_dataset = SkinDataset(test_data, transform, test_time_aug=False)
+test_dataset = SkinDataset(test_data, transform, test_time_aug=True)
 test_loader = DataLoader(test_dataset, batch_size=32, num_workers=4)
 
 skin_metrics2 = {
