@@ -2,3 +2,4 @@
 **/*.npz
 ViT Basic/plot.ipynb
 *.txt
+/*.ipynb
